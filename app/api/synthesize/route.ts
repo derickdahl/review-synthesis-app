@@ -107,6 +107,8 @@ Please generate a review with these 4 sections:
 Base the content on the available data sources and be specific about what informed each section.`
 
   try {
+    console.log('DEBUG: About to call Claude API, API key exists:', !!process.env.ANTHROPIC_API_KEY)
+    console.log('DEBUG: API key starts with:', process.env.ANTHROPIC_API_KEY?.substring(0, 15))
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -124,6 +126,7 @@ Base the content on the available data sources and be specific about what inform
       })
     })
 
+    console.log('DEBUG: Claude API response status:', response.status)
     if (!response.ok) {
       console.error(`Claude API error: ${response.status}`)
       throw new Error(`Claude API error: ${response.status}`)
