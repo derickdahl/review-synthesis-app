@@ -30,7 +30,7 @@ interface ReviewOutput {
   }
 }
 
-const VERSION = "2.2.3-debug2"
+const VERSION = "2.2.3-fixed"
 
 export default function HomePage() {
   const [inputs, setInputs] = useState<ReviewInputs>({

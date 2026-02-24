@@ -148,51 +148,53 @@ Base the content on the available data sources and be specific about what inform
 }
 
 function parseReviewSections(text: string) {
-  // Simple section parsing
-  const sections = {
-    strengths: extractSection(text, ['strength', '1.']),
-    developmentFeedback: extractSection(text, ['development', 'feedback', '2.']),
-    goalsNextYear: extractSection(text, ['goal', 'next year', '3.']),
-    overallAssessment: extractSection(text, ['overall', 'assessment', '4.'])
+  console.log('DEBUG: Full Claude response:', text)
+  
+  // More flexible section parsing - split by common patterns
+  const lines = text.split('\n')
+  let currentSection = ''
+  let sections: any = {
+    strengths: '',
+    developmentFeedback: '',
+    goalsNextYear: '', 
+    overallAssessment: ''
   }
 
-  console.log('DEBUG: Parsed sections:', Object.keys(sections).map(key => `${key}: ${(sections as any)[key].substring(0, 50)}...`))
+  for (const line of lines) {
+    const lower = line.toLowerCase().trim()
+    
+    // Detect section headers
+    if (lower.includes('strength') || lower.includes('1.')) {
+      currentSection = 'strengths'
+      continue
+    } else if (lower.includes('development') || lower.includes('feedback') || lower.includes('2.')) {
+      currentSection = 'developmentFeedback'  
+      continue
+    } else if (lower.includes('goal') || lower.includes('next year') || lower.includes('3.')) {
+      currentSection = 'goalsNextYear'
+      continue
+    } else if (lower.includes('overall') || lower.includes('assessment') || lower.includes('4.')) {
+      currentSection = 'overallAssessment'
+      continue
+    }
+    
+    // Add content to current section
+    if (currentSection && line.trim()) {
+      sections[currentSection] += line + '\n'
+    }
+  }
+
+  // Clean up sections
+  Object.keys(sections).forEach(key => {
+    sections[key] = sections[key].trim() || 'Content will be generated based on available data sources.'
+  })
+
+  console.log('DEBUG: Parsed sections:', Object.keys(sections).map(key => `${key}: ${sections[key].substring(0, 50)}...`))
   
   return sections
 }
 
-function extractSection(text: string, keywords: string[]): string {
-  const lines = text.split('\n')
-  let sectionContent = ''
-  let inSection = false
-  let nextSectionFound = false
-
-  for (const line of lines) {
-    const lowerLine = line.toLowerCase()
-    
-    // Check if this line starts a section we want
-    const isTargetSection = keywords.some(keyword => lowerLine.includes(keyword))
-    
-    // Check if this line starts a different numbered section
-    const isNumberedSection = /^\d\./.test(line.trim())
-    
-    if (isTargetSection) {
-      inSection = true
-      continue // Skip the header line
-    }
-    
-    if (inSection && isNumberedSection && !isTargetSection) {
-      nextSectionFound = true
-      break
-    }
-    
-    if (inSection && line.trim()) {
-      sectionContent += line + '\n'
-    }
-  }
-
-  return sectionContent.trim() || `Content for this section will be generated based on available data sources.`
-}
+// extractSection function removed - using new simplified parseReviewSections
 
 function generateFallbackReview(dataUsed: any, extractedData: any, managerComments: string) {
   const dataSourceCount = Object.values(dataUsed).filter(Boolean).length
