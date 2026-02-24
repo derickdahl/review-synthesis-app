@@ -16,6 +16,17 @@ interface SynthesisResponse {
 
 export async function POST(request: Request) {
   try {
+    const contentType = request.headers.get('content-type')
+    
+    // Handle test requests
+    if (contentType?.includes('application/json')) {
+      return NextResponse.json({ 
+        status: 'API is working', 
+        timestamp: new Date().toISOString(),
+        apiKey: !!process.env.ANTHROPIC_API_KEY ? 'present' : 'missing'
+      })
+    }
+    
     const formData = await request.formData()
     
     const managerComments = formData.get('managerComments') as string || ''
