@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Upload, FileText, Users, MessageSquare, Settings, Download, Sparkles, X, Camera } from 'lucide-react'
+import { Upload, FileText, Users, MessageSquare, Settings, Download, Sparkles, X, Camera, CheckCircle, Eye } from 'lucide-react'
 
 interface ReviewInputs {
   itpEmployeeScreenshots: File[]
@@ -11,14 +11,33 @@ interface ReviewInputs {
   managerComments: string
 }
 
+interface ExtractedData {
+  itpEmployeeScores: { humble: number; hungry: number; smart: number } | null
+  itpManagerScores: { humble: number; hungry: number; smart: number } | null
+  feedback360Text: string | null
+  selfReviewText: string | null
+  extractionStatus: {
+    itpEmployee: 'pending' | 'processing' | 'complete' | 'error'
+    itpManager: 'pending' | 'processing' | 'complete' | 'error'
+    feedback360: 'pending' | 'processing' | 'complete' | 'error' | 'skipped'
+    selfReview: 'pending' | 'processing' | 'complete' | 'error'
+  }
+}
+
 interface ReviewOutput {
   strengths: string
   developmentFeedback: string
   goalsNextYear: string
   overallAssessment: string
+  dataUsed: {
+    itpScores: boolean
+    feedback360: boolean
+    selfReview: boolean
+    managerComments: boolean
+  }
 }
 
-const VERSION = "2.0.0"
+const VERSION = "2.1.0"
 
 export default function HomePage() {
   const [inputs, setInputs] = useState<ReviewInputs>({
@@ -29,38 +48,82 @@ export default function HomePage() {
     managerComments: ''
   })
 
+  const [extractedData, setExtractedData] = useState<ExtractedData>({
+    itpEmployeeScores: null,
+    itpManagerScores: null,
+    feedback360Text: null,
+    selfReviewText: null,
+    extractionStatus: {
+      itpEmployee: 'pending',
+      itpManager: 'pending',
+      feedback360: 'pending',
+      selfReview: 'pending'
+    }
+  })
+
   const [output, setOutput] = useState<ReviewOutput | null>(null)
   const [isGenerating, setIsGenerating] = useState(false)
   const [currentStep, setCurrentStep] = useState(1)
+  const [showExtractedData, setShowExtractedData] = useState(false)
+
+  // Calculate completion status for each step
+  const getStepStatus = (stepId: number) => {
+    switch (stepId) {
+      case 1: // ITP Assessment
+        return (inputs.itpEmployeeScreenshots.length > 0 && inputs.itpManagerScreenshots.length > 0) ? 'complete' :
+               (inputs.itpEmployeeScreenshots.length > 0 || inputs.itpManagerScreenshots.length > 0) ? 'partial' : 'incomplete'
+      case 2: // 360 Feedback (optional)
+        return inputs.feedback360 ? 'complete' : 'skipped'
+      case 3: // Self Review
+        return inputs.selfReviewScreenshots.length > 0 ? 'complete' : 'incomplete'
+      case 4: // Manager Comments
+        return inputs.managerComments.trim().length > 0 ? 'complete' : 'incomplete'
+      case 5: // Generate Review
+        return output ? 'complete' : 'incomplete'
+      default:
+        return 'incomplete'
+    }
+  }
+
+  // Auto-advance current step based on completion
+  const updateCurrentStep = () => {
+    for (let i = 1; i <= 5; i++) {
+      const status = getStepStatus(i)
+      if (status === 'incomplete') {
+        setCurrentStep(i)
+        return
+      }
+    }
+    setCurrentStep(5) // All steps complete
+  }
 
   const handleGenerateReview = async () => {
     setIsGenerating(true)
     
     try {
-      // Process all uploaded images through OCR/vision API
+      // First, extract data from all uploads
+      await extractDataFromUploads()
+      
+      // Then synthesize the review
       const formData = new FormData()
       
-      // Add ITP employee screenshots
-      inputs.itpEmployeeScreenshots.forEach((file, index) => {
+      // Add all files and data
+      inputs.itpEmployeeScreenshots.forEach((file) => {
         formData.append(`itpEmployeeScreenshots`, file)
       })
       
-      // Add ITP manager screenshots  
-      inputs.itpManagerScreenshots.forEach((file, index) => {
+      inputs.itpManagerScreenshots.forEach((file) => {
         formData.append(`itpManagerScreenshots`, file)
       })
       
-      // Add self-review screenshots
-      inputs.selfReviewScreenshots.forEach((file, index) => {
+      inputs.selfReviewScreenshots.forEach((file) => {
         formData.append(`selfReviewScreenshots`, file)
       })
       
-      // Add 360 feedback if provided
       if (inputs.feedback360) {
         formData.append('feedback360', inputs.feedback360)
       }
       
-      // Add manager comments
       formData.append('managerComments', inputs.managerComments)
 
       const response = await fetch('/api/synthesize', {
@@ -74,45 +137,45 @@ export default function HomePage() {
 
       const result = await response.json()
       setOutput(result)
+      updateCurrentStep()
+      
     } catch (error) {
       console.error('Error generating review:', error)
-      // For demo purposes, show mock output
-      setOutput({
-        strengths: `Based on the comprehensive feedback analysis from uploaded screenshots and documents, this employee demonstrates exceptional strategic thinking capabilities combined with strong technical execution. The ITP assessment screenshots reveal consistently high scores in key areas, while the self-review responses show strong self-awareness and growth mindset.
-
-Key strengths include:
-• Systems-level thinking that addresses root causes rather than symptoms  
-• Creative problem-solving that challenges conventional approaches
-• Strong collaboration and cross-functional communication
-• Effective translation of complex concepts into actionable business applications`,
-
-        developmentFeedback: `The analysis of all uploaded materials suggests focused development opportunities that will amplify existing strengths:
-
-Development priorities:
-• Enhance communication consistency and responsiveness to stakeholders
-• Strengthen project follow-through by implementing structured execution frameworks  
-• Develop more systematic time management approaches for competing priorities
-• Build delegation capabilities to scale impact through team development
-
-The self-review screenshots indicate good self-awareness of these areas, creating strong foundation for targeted improvement efforts.`,
-
-        goalsNextYear: `1. **Communication Excellence**: Establish structured communication protocols including regular status updates and proactive stakeholder engagement.
-
-2. **Execution Systems**: Implement project management methodologies ensuring consistent delivery from ideation through completion.
-
-3. **Leadership Development**: Focus on transitioning from individual contributor to team amplifier through effective delegation and mentoring.
-
-4. **Strategic Impact**: Leverage technical expertise to drive broader organizational initiatives while maintaining focus on highest-priority deliverables.
-
-5. **Professional Growth**: Pursue targeted skill development in areas identified through ITP assessment and self-reflection exercises.`,
-
-        overallAssessment: `This comprehensive review, synthesized from multiple screenshot-based assessments and feedback documents, reveals an employee with exceptional potential and strong foundational capabilities. The visual data analysis confirms alignment between self-perception and manager assessment, indicating good self-awareness and realistic professional outlook.
-
-The development opportunities identified represent natural next steps for someone with this skill profile, focusing on operational excellence and leadership transition rather than fundamental capability gaps. With structured attention to execution consistency and stakeholder communication, this individual is well-positioned for significant impact and career advancement.`
-      })
+      // Show error state
     }
     
     setIsGenerating(false)
+  }
+
+  const extractDataFromUploads = async () => {
+    // Update status to show processing
+    setExtractedData(prev => ({
+      ...prev,
+      extractionStatus: {
+        itpEmployee: inputs.itpEmployeeScreenshots.length > 0 ? 'processing' : 'pending',
+        itpManager: inputs.itpManagerScreenshots.length > 0 ? 'processing' : 'pending',
+        feedback360: inputs.feedback360 ? 'processing' : 'skipped',
+        selfReview: inputs.selfReviewScreenshots.length > 0 ? 'processing' : 'pending'
+      }
+    }))
+
+    // Simulate extraction process (in real implementation, this would call the API)
+    await new Promise(resolve => setTimeout(resolve, 2000))
+
+    // Mock extracted data
+    setExtractedData(prev => ({
+      ...prev,
+      itpEmployeeScores: inputs.itpEmployeeScreenshots.length > 0 ? { humble: 8, hungry: 7, smart: 9 } : null,
+      itpManagerScores: inputs.itpManagerScreenshots.length > 0 ? { humble: 7, hungry: 8, smart: 8 } : null,
+      feedback360Text: inputs.feedback360 ? "Extracted 360 feedback content would appear here..." : null,
+      selfReviewText: inputs.selfReviewScreenshots.length > 0 ? "Extracted self-review text would appear here..." : null,
+      extractionStatus: {
+        itpEmployee: inputs.itpEmployeeScreenshots.length > 0 ? 'complete' : 'pending',
+        itpManager: inputs.itpManagerScreenshots.length > 0 ? 'complete' : 'pending',
+        feedback360: inputs.feedback360 ? 'complete' : 'skipped',
+        selfReview: inputs.selfReviewScreenshots.length > 0 ? 'complete' : 'pending'
+      }
+    }))
   }
 
   const handleFileUpload = (files: FileList | null, type: keyof ReviewInputs) => {
@@ -127,6 +190,9 @@ The development opportunities identified represent natural next steps for someon
         [type]: [...(prev[type] as File[]), ...fileArray]
       }))
     }
+    
+    // Update step progress
+    setTimeout(updateCurrentStep, 100)
   }
 
   const removeFile = (type: keyof ReviewInputs, index?: number) => {
@@ -137,6 +203,51 @@ The development opportunities identified represent natural next steps for someon
         ...prev,
         [type]: (prev[type] as File[]).filter((_, i) => i !== index)
       }))
+    }
+    
+    setTimeout(updateCurrentStep, 100)
+  }
+
+  const handleExport = async () => {
+    if (!output) return
+
+    const reviewText = `PERFORMANCE REVIEW
+Generated on ${new Date().toLocaleDateString()}
+
+GREATEST STRENGTHS:
+${output.strengths}
+
+DEVELOPMENT FEEDBACK:
+${output.developmentFeedback}
+
+GOALS FOR NEXT YEAR:
+${output.goalsNextYear}
+
+OVERALL ASSESSMENT:
+${output.overallAssessment}
+
+---
+Data Sources Used:
+${output.dataUsed.itpScores ? '✓' : '✗'} ITP Assessment Scores
+${output.dataUsed.feedback360 ? '✓' : '✗'} 360 Feedback Document  
+${output.dataUsed.selfReview ? '✓' : '✗'} Employee Self Review
+${output.dataUsed.managerComments ? '✓' : '✗'} Manager Comments
+
+Generated by Review Synthesis App v${VERSION}`
+
+    // Copy to clipboard
+    try {
+      await navigator.clipboard.writeText(reviewText)
+      alert('Review copied to clipboard!')
+    } catch (err) {
+      // Fallback: download as text file
+      const blob = new Blob([reviewText], { type: 'text/plain' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `performance-review-${new Date().toISOString().split('T')[0]}.txt`
+      a.click()
+      URL.revokeObjectURL(url)
     }
   }
 
@@ -155,7 +266,8 @@ The development opportunities identified represent natural next steps for someon
     onRemove, 
     multiple = true, 
     optional = false,
-    accept = "image/*"
+    accept = "image/*",
+    stepNumber
   }: {
     title: string
     files: File[] | File | null
@@ -164,18 +276,23 @@ The development opportunities identified represent natural next steps for someon
     multiple?: boolean
     optional?: boolean
     accept?: string
+    stepNumber: number
   }) => {
     const fileArray = Array.isArray(files) ? files : files ? [files] : []
+    const stepStatus = getStepStatus(stepNumber)
     
     return (
       <div className="mb-6">
         <h3 className="font-medium text-gray-700 mb-3 flex items-center">
+          {stepStatus === 'complete' && <CheckCircle className="w-5 h-5 text-green-500 mr-2" />}
           {title} 
           {optional && <span className="text-sm text-gray-500 ml-2">(Optional)</span>}
         </h3>
         
         {/* Upload Area */}
-        <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-blue-400 transition-colors">
+        <div className={`border-2 border-dashed rounded-lg p-6 text-center transition-colors ${
+          stepStatus === 'complete' ? 'border-green-300 bg-green-50' : 'border-gray-300 hover:border-blue-400'
+        }`}>
           <input
             type="file"
             accept={accept}
@@ -232,33 +349,40 @@ The development opportunities identified represent natural next steps for someon
         </div>
       </div>
 
-      {/* Progress Steps */}
+      {/* Progress Steps - Now Functional */}
       <div className="mb-8">
         <div className="flex items-center justify-between">
           {steps.map((step, index) => {
             const Icon = step.icon
+            const status = getStepStatus(step.id)
             const isActive = currentStep === step.id
-            const isCompleted = currentStep > step.id
             
             return (
               <div key={step.id} className="flex items-center">
                 <div className={`flex items-center justify-center w-10 h-10 rounded-full border-2 ${
-                  isCompleted 
+                  status === 'complete' 
                     ? 'bg-green-500 border-green-500 text-white' 
-                    : isActive 
-                      ? 'bg-blue-500 border-blue-500 text-white' 
-                      : 'bg-white border-gray-300 text-gray-400'
+                    : status === 'partial'
+                      ? 'bg-yellow-500 border-yellow-500 text-white'
+                      : isActive 
+                        ? 'bg-blue-500 border-blue-500 text-white' 
+                        : status === 'skipped'
+                          ? 'bg-gray-200 border-gray-300 text-gray-400'
+                          : 'bg-white border-gray-300 text-gray-400'
                 }`}>
-                  <Icon className="w-5 h-5" />
+                  {status === 'complete' ? <CheckCircle className="w-5 h-5" /> : <Icon className="w-5 h-5" />}
                 </div>
                 <span className={`ml-2 text-sm font-medium ${
-                  isActive ? 'text-blue-600' : isCompleted ? 'text-green-600' : 'text-gray-500'
+                  isActive ? 'text-blue-600' : 
+                  status === 'complete' ? 'text-green-600' : 
+                  status === 'skipped' ? 'text-gray-400' : 'text-gray-500'
                 }`}>
                   {step.title}
+                  {status === 'skipped' && ' (Skipped)'}
                 </span>
                 {index < steps.length - 1 && (
                   <div className={`w-16 h-0.5 mx-4 ${
-                    isCompleted ? 'bg-green-500' : 'bg-gray-300'
+                    status === 'complete' ? 'bg-green-500' : 'bg-gray-300'
                   }`} />
                 )}
               </div>
@@ -281,6 +405,7 @@ The development opportunities identified represent natural next steps for someon
               onRemove={(index) => removeFile('itpEmployeeScreenshots', index)}
               multiple={true}
               accept="image/*"
+              stepNumber={1}
             />
 
             {/* ITP Manager Screenshots */}
@@ -291,9 +416,10 @@ The development opportunities identified represent natural next steps for someon
               onRemove={(index) => removeFile('itpManagerScreenshots', index)}
               multiple={true}
               accept="image/*"
+              stepNumber={1}
             />
 
-            {/* 360 Feedback Upload - Now Optional */}
+            {/* 360 Feedback Upload - Optional */}
             <FileUploadArea
               title="3. 360 Feedback Document"
               files={inputs.feedback360}
@@ -302,6 +428,7 @@ The development opportunities identified represent natural next steps for someon
               multiple={false}
               optional={true}
               accept=".pdf"
+              stepNumber={2}
             />
 
             {/* Self Review Screenshots */}
@@ -312,22 +439,68 @@ The development opportunities identified represent natural next steps for someon
               onRemove={(index) => removeFile('selfReviewScreenshots', index)}
               multiple={true}
               accept="image/*"
+              stepNumber={3}
             />
 
             {/* Manager Comments */}
             <div className="mb-6">
-              <h3 className="font-medium text-gray-700 mb-3">5. Manager Comments</h3>
+              <h3 className="font-medium text-gray-700 mb-3 flex items-center">
+                {getStepStatus(4) === 'complete' && <CheckCircle className="w-5 h-5 text-green-500 mr-2" />}
+                5. Manager Comments
+              </h3>
               <textarea
-                className="w-full h-32 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className={`w-full h-32 px-3 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
+                  getStepStatus(4) === 'complete' ? 'border-green-300 bg-green-50' : 'border-gray-300'
+                }`}
                 placeholder="Add your observations and comments about this employee..."
                 value={inputs.managerComments}
-                onChange={(e) => setInputs(prev => ({ ...prev, managerComments: e.target.value }))}
+                onChange={(e) => {
+                  setInputs(prev => ({ ...prev, managerComments: e.target.value }))
+                  setTimeout(updateCurrentStep, 100)
+                }}
               />
             </div>
 
+            {/* Show Extracted Data Button */}
+            {(extractedData.itpEmployeeScores || extractedData.itpManagerScores || extractedData.selfReviewText) && (
+              <button
+                onClick={() => setShowExtractedData(!showExtractedData)}
+                className="mb-4 flex items-center space-x-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200"
+              >
+                <Eye className="h-4 w-4" />
+                <span>{showExtractedData ? 'Hide' : 'Show'} Extracted Data</span>
+              </button>
+            )}
+
+            {/* Extracted Data Display */}
+            {showExtractedData && (
+              <div className="mb-6 p-4 bg-gray-50 rounded-lg">
+                <h4 className="font-medium text-gray-700 mb-3">Data Extracted from Uploads:</h4>
+                {extractedData.itpEmployeeScores && (
+                  <div className="mb-2">
+                    <strong>Employee ITP:</strong> Humble: {extractedData.itpEmployeeScores.humble}/10, 
+                    Hungry: {extractedData.itpEmployeeScores.hungry}/10, 
+                    Smart: {extractedData.itpEmployeeScores.smart}/10
+                  </div>
+                )}
+                {extractedData.itpManagerScores && (
+                  <div className="mb-2">
+                    <strong>Manager ITP:</strong> Humble: {extractedData.itpManagerScores.humble}/10, 
+                    Hungry: {extractedData.itpManagerScores.hungry}/10, 
+                    Smart: {extractedData.itpManagerScores.smart}/10
+                  </div>
+                )}
+                {extractedData.selfReviewText && (
+                  <div className="mb-2">
+                    <strong>Self Review Extract:</strong> {extractedData.selfReviewText.substring(0, 100)}...
+                  </div>
+                )}
+              </div>
+            )}
+
             <button
               onClick={handleGenerateReview}
-              disabled={isGenerating}
+              disabled={isGenerating || getStepStatus(4) !== 'complete'}
               className="w-full bg-blue-600 text-white py-3 px-4 rounded-lg font-semibold hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
             >
               {isGenerating ? (
@@ -351,7 +524,10 @@ The development opportunities identified represent natural next steps for someon
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-semibold text-gray-800">Generated Review</h2>
               {output && (
-                <button className="flex items-center space-x-2 px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700">
+                <button 
+                  onClick={handleExport}
+                  className="flex items-center space-x-2 px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
+                >
                   <Download className="h-4 w-4" />
                   <span>Export</span>
                 </button>
@@ -360,6 +536,17 @@ The development opportunities identified represent natural next steps for someon
 
             {output ? (
               <div className="space-y-6">
+                {/* Data Sources Used */}
+                <div className="bg-blue-50 p-3 rounded-lg">
+                  <h4 className="font-medium text-blue-800 mb-2">Data Sources Used:</h4>
+                  <div className="text-sm text-blue-700 space-y-1">
+                    <div>{output.dataUsed.itpScores ? '✓' : '✗'} ITP Assessment Scores</div>
+                    <div>{output.dataUsed.feedback360 ? '✓' : '✗'} 360 Feedback Document</div>
+                    <div>{output.dataUsed.selfReview ? '✓' : '✗'} Employee Self Review</div>
+                    <div>{output.dataUsed.managerComments ? '✓' : '✗'} Manager Comments</div>
+                  </div>
+                </div>
+
                 <div>
                   <h3 className="font-medium text-gray-700 mb-2">Greatest Strengths</h3>
                   <div className="bg-gray-50 p-4 rounded-md">
