@@ -1,54 +1,36 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 
 interface SynthesisResponse {
-  strengths: string;
-  developmentFeedback: string;
-  goalsNextYear: string;
-  overallAssessment: string;
+  strengths: string
+  developmentFeedback: string
+  goalsNextYear: string
+  overallAssessment: string
   dataUsed: {
-    itpScores: boolean;
-    feedback360: boolean;
-    selfReview: boolean;
-    managerComments: boolean;
-  };
-  extractedData: {
-    itpEmployeeScores: { humble: number; hungry: number; smart: number } | null;
-    itpManagerScores: { humble: number; hungry: number; smart: number } | null;
-    feedback360Summary: string | null;
-    selfReviewSummary: string | null;
-  };
+    itpScores: boolean
+    feedback360: boolean
+    selfReview: boolean
+    managerComments: boolean
+  }
+  extractedData: any
 }
 
-export async function POST(request: NextRequest) {
+export async function POST(request: Request) {
   try {
-    console.log('API route called')
     const formData = await request.formData()
     
-    // Extract basic information
     const managerComments = formData.get('managerComments') as string || ''
-    const itpEmployeeFiles = formData.getAll('itpEmployeeScreenshots') as File[]
-    const itpManagerFiles = formData.getAll('itpManagerScreenshots') as File[]
-    const selfReviewFiles = formData.getAll('selfReviewScreenshots') as File[]
-    const feedback360File = formData.get('feedback360') as File
+    const itpEmployeeFiles = formData.getAll('itpEmployeeScreenshots')
+    const itpManagerFiles = formData.getAll('itpManagerScreenshots')
+    const feedback360File = formData.get('feedback360')
+    const selfReviewFiles = formData.getAll('selfReviewScreenshots')
 
-    console.log('Received files:', {
-      itpEmployee: itpEmployeeFiles.length,
-      itpManager: itpManagerFiles.length,
-      selfReview: selfReviewFiles.length,
-      feedback360: !!feedback360File,
-      managerComments: !!managerComments
-    })
-
-    // Track what data we have
     const dataUsed = {
       itpScores: itpEmployeeFiles.length > 0 || itpManagerFiles.length > 0,
       feedback360: !!feedback360File,
       selfReview: selfReviewFiles.length > 0,
-      managerComments: !!managerComments.trim()
+      managerComments: managerComments.trim().length > 0
     }
 
-    // For now, generate a working review with mock extracted data
-    // We'll add real OCR processing once this basic flow works
     const mockExtractedData = {
       itpEmployeeScores: itpEmployeeFiles.length > 0 ? { humble: 8, hungry: 7, smart: 9 } : null,
       itpManagerScores: itpManagerFiles.length > 0 ? { humble: 7, hungry: 8, smart: 8 } : null,
@@ -56,13 +38,103 @@ export async function POST(request: NextRequest) {
       selfReviewSummary: selfReviewFiles.length > 0 ? "Focused on continuous learning, project leadership, team development..." : null
     }
 
-    // Generate the review using Claude
-    const reviewContent = await generateReviewWithClaude(dataUsed, mockExtractedData, managerComments)
+    // Build context for Claude
+    const dataSources: string[] = []
+    if (mockExtractedData.itpEmployeeScores) {
+      dataSources.push(`ITP Employee Scores: Humble ${mockExtractedData.itpEmployeeScores.humble}/10, Hungry ${mockExtractedData.itpEmployeeScores.hungry}/10, Smart ${mockExtractedData.itpEmployeeScores.smart}/10`)
+    }
+    if (mockExtractedData.itpManagerScores) {
+      dataSources.push(`ITP Manager Scores: Humble ${mockExtractedData.itpManagerScores.humble}/10, Hungry ${mockExtractedData.itpManagerScores.hungry}/10, Smart ${mockExtractedData.itpManagerScores.smart}/10`)
+    }
+    if (mockExtractedData.feedback360Summary) {
+      dataSources.push(`360 Feedback: ${mockExtractedData.feedback360Summary}`)
+    }
+    if (mockExtractedData.selfReviewSummary) {
+      dataSources.push(`Self Review: ${mockExtractedData.selfReviewSummary}`)
+    }
+    if (managerComments.trim()) {
+      dataSources.push(`Manager Comments: ${managerComments}`)
+    }
 
-    console.log('Review generated successfully')
+    const dataContext = dataSources.length > 0 ? dataSources.join('\n\n') : 'No data provided'
+
+    const prompt = `You are a professional HR performance review writer. Generate a performance review based on the following data.
+
+DATA SOURCES:
+${dataContext}
+
+Return ONLY a valid JSON object with exactly these 4 keys (no markdown, no code fences, just raw JSON):
+{
+  "strengths": "2-3 paragraphs about the employee's greatest strengths based on the data provided",
+  "developmentFeedback": "2-3 paragraphs about areas for development and constructive feedback",
+  "goalsNextYear": "4-5 numbered goals for the next year with brief descriptions",
+  "overallAssessment": "1-2 paragraphs with an overall assessment summary including data confidence level"
+}
+
+Make the content specific to the data provided. Be professional and constructive.`
+
+    const apiKey = process.env.ANTHROPIC_API_KEY
+    
+    if (!apiKey) {
+      console.error('ANTHROPIC_API_KEY is not set')
+      return NextResponse.json({
+        ...generateFallback(dataUsed, mockExtractedData, managerComments),
+        dataUsed,
+        extractedData: mockExtractedData,
+        error: 'API key not configured'
+      })
+    }
+
+    const claudeResponse = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify({
+        model: 'claude-3-haiku-20240307',
+        max_tokens: 2000,
+        messages: [{ role: 'user', content: prompt }]
+      })
+    })
+
+    if (!claudeResponse.ok) {
+      const errText = await claudeResponse.text()
+      console.error('Claude API error:', claudeResponse.status, errText)
+      return NextResponse.json({
+        ...generateFallback(dataUsed, mockExtractedData, managerComments),
+        dataUsed,
+        extractedData: mockExtractedData,
+        error: `Claude API error: ${claudeResponse.status}`
+      })
+    }
+
+    const result = await claudeResponse.json()
+    const text = result.content?.[0]?.text || ''
+
+    // Parse the JSON response from Claude
+    let reviewContent: any
+    try {
+      // Strip any markdown code fences if present
+      const cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
+      reviewContent = JSON.parse(cleaned)
+    } catch (parseError) {
+      console.error('Failed to parse Claude JSON response:', text.substring(0, 200))
+      // Use the raw text as the overall assessment if JSON parsing fails
+      reviewContent = {
+        strengths: text.substring(0, Math.floor(text.length / 4)),
+        developmentFeedback: text.substring(Math.floor(text.length / 4), Math.floor(text.length / 2)),
+        goalsNextYear: text.substring(Math.floor(text.length / 2), Math.floor(text.length * 3 / 4)),
+        overallAssessment: text.substring(Math.floor(text.length * 3 / 4))
+      }
+    }
 
     const response: SynthesisResponse = {
-      ...reviewContent,
+      strengths: reviewContent.strengths || 'No strengths data generated.',
+      developmentFeedback: reviewContent.developmentFeedback || 'No development feedback generated.',
+      goalsNextYear: reviewContent.goalsNextYear || 'No goals generated.',
+      overallAssessment: reviewContent.overallAssessment || 'No overall assessment generated.',
       dataUsed,
       extractedData: mockExtractedData
     }
@@ -78,161 +150,16 @@ export async function POST(request: NextRequest) {
   }
 }
 
-async function generateReviewWithClaude(dataUsed: any, extractedData: any, managerComments: string) {
-  const availableData = Object.entries(dataUsed).filter(([_, used]) => used).map(([key, _]) => key).join(', ')
-  
-  const prompt = `Generate a professional performance review based on the following available data sources:
-
-AVAILABLE DATA: ${availableData}
-
-ITP SCORES (if available):
-${extractedData.itpEmployeeScores ? `Employee Self-Assessment: Humble ${extractedData.itpEmployeeScores.humble}/10, Hungry ${extractedData.itpEmployeeScores.hungry}/10, Smart ${extractedData.itpEmployeeScores.smart}/10` : 'No employee ITP scores'}
-${extractedData.itpManagerScores ? `Manager Assessment: Humble ${extractedData.itpManagerScores.humble}/10, Hungry ${extractedData.itpManagerScores.hungry}/10, Smart ${extractedData.itpManagerScores.smart}/10` : 'No manager ITP scores'}
-
-360 FEEDBACK SUMMARY:
-${extractedData.feedback360Summary || 'No 360 feedback provided'}
-
-SELF REVIEW SUMMARY:
-${extractedData.selfReviewSummary || 'No self review provided'}
-
-MANAGER COMMENTS:
-${managerComments || 'No manager comments provided'}
-
-Please generate a review with these 4 sections:
-1. Greatest Strengths
-2. Development Feedback
-3. Goals for Next Year  
-4. Overall Assessment
-
-Base the content on the available data sources and be specific about what informed each section.`
-
-  try {
-    console.log('DEBUG: About to call Claude API, API key exists:', !!process.env.ANTHROPIC_API_KEY)
-    console.log('DEBUG: API key starts with:', process.env.ANTHROPIC_API_KEY?.substring(0, 15))
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': process.env.ANTHROPIC_API_KEY || '',
-        'anthropic-version': '2023-06-01'
-      },
-      body: JSON.stringify({
-        model: 'claude-3-haiku-20240307',
-        max_tokens: 2000,
-        messages: [{
-          role: 'user',
-          content: prompt
-        }]
-      })
-    })
-
-    console.log('DEBUG: Claude API response status:', response.status)
-    if (!response.ok) {
-      console.error(`Claude API error: ${response.status}`)
-      throw new Error(`Claude API error: ${response.status}`)
-    }
-
-    const result = await response.json()
-    const synthesizedText = result.content[0]?.text || ''
-    
-    console.log('DEBUG: Claude response length:', synthesizedText.length)
-    console.log('DEBUG: Claude response (first 500 chars):', synthesizedText.substring(0, 500))
-    
-    return parseReviewSections(synthesizedText)
-    
-  } catch (error) {
-    console.error('Error calling Claude API:', error)
-    // Return fallback content
-    return generateFallbackReview(dataUsed, extractedData, managerComments)
-  }
-}
-
-function parseReviewSections(text: string) {
-  console.log('DEBUG: Full Claude response:', text)
-  
-  // More flexible section parsing - split by common patterns
-  const lines = text.split('\n')
-  let currentSection = ''
-  let sections: any = {
-    strengths: '',
-    developmentFeedback: '',
-    goalsNextYear: '', 
-    overallAssessment: ''
-  }
-
-  for (const line of lines) {
-    const lower = line.toLowerCase().trim()
-    
-    // Detect section headers
-    if (lower.includes('strength') || lower.includes('1.')) {
-      currentSection = 'strengths'
-      continue
-    } else if (lower.includes('development') || lower.includes('feedback') || lower.includes('2.')) {
-      currentSection = 'developmentFeedback'  
-      continue
-    } else if (lower.includes('goal') || lower.includes('next year') || lower.includes('3.')) {
-      currentSection = 'goalsNextYear'
-      continue
-    } else if (lower.includes('overall') || lower.includes('assessment') || lower.includes('4.')) {
-      currentSection = 'overallAssessment'
-      continue
-    }
-    
-    // Add content to current section
-    if (currentSection && line.trim()) {
-      sections[currentSection] += line + '\n'
-    }
-  }
-
-  // Clean up sections
-  Object.keys(sections).forEach(key => {
-    sections[key] = sections[key].trim() || 'Content will be generated based on available data sources.'
-  })
-
-  console.log('DEBUG: Parsed sections:', Object.keys(sections).map(key => `${key}: ${sections[key].substring(0, 50)}...`))
-  
-  return sections
-}
-
-// extractSection function removed - using new simplified parseReviewSections
-
-function generateFallbackReview(dataUsed: any, extractedData: any, managerComments: string) {
-  const dataSourceCount = Object.values(dataUsed).filter(Boolean).length
-  
+function generateFallback(dataUsed: any, extractedData: any, managerComments: string) {
+  const count = Object.values(dataUsed).filter(Boolean).length
   return {
-    strengths: `Based on analysis of ${dataSourceCount} data sources:
-
-${extractedData.itpEmployeeScores ? `• Strong ITP self-assessment scores averaging ${Math.round((extractedData.itpEmployeeScores.humble + extractedData.itpEmployeeScores.hungry + extractedData.itpEmployeeScores.smart) / 3)}/10` : ''}
-${extractedData.itpManagerScores ? `• Manager ITP ratings averaging ${Math.round((extractedData.itpManagerScores.humble + extractedData.itpManagerScores.hungry + extractedData.itpManagerScores.smart) / 3)}/10` : ''}
-${dataUsed.feedback360 ? '• 360 feedback highlights strategic thinking and collaboration skills' : ''}
-${dataUsed.selfReview ? '• Self-review demonstrates self-awareness and growth mindset' : ''}
-${managerComments ? `• Manager notes: ${managerComments.substring(0, 100)}...` : ''}
-
-Key strengths include strategic thinking, technical competence, and collaborative approach based on available assessment data.`,
-
-    developmentFeedback: `Development opportunities identified through comprehensive review:
-
-• Enhanced communication consistency and proactive stakeholder engagement
-• Systematic project management for reliable delivery and follow-through
-• Time management optimization for competing priorities and workload balance
-• Leadership skill development for team amplification and delegation
-
-${extractedData.itpEmployeeScores && extractedData.itpManagerScores ? 'ITP assessment shows alignment opportunities in specific competency areas.' : ''}`,
-
-    goalsNextYear: `Recommended goals based on ${dataSourceCount} assessment sources:
-
-1. **Communication Systems**: Establish structured protocols for project updates and stakeholder engagement
-2. **Execution Excellence**: Implement consistent project management frameworks for reliable delivery
-3. **Leadership Development**: Build delegation and team development capabilities
-4. **Professional Growth**: Target skill development in areas identified through assessment process
-5. **Performance Measurement**: Create metrics to track progress on development priorities`,
-
-    overallAssessment: `This assessment synthesizes information from ${dataSourceCount} of 4 possible data sources (${Object.entries(dataUsed).filter(([_, used]) => used).map(([key, _]) => key).join(', ')}).
-
-The employee demonstrates strong foundational capabilities with clear pathways for enhanced organizational impact. ${extractedData.itpEmployeeScores && extractedData.itpManagerScores ? 'ITP assessments indicate solid team player characteristics with specific development opportunities.' : ''} 
-
-${managerComments ? 'Manager observations provide valuable context for performance evaluation and development planning.' : ''} With focused attention on the identified development areas, this individual is positioned for significant professional growth and increased value delivery.
-
-Assessment confidence: ${Math.round((dataSourceCount / 4) * 100)}% based on available data sources.`
+    strengths: `Based on ${count} data source(s): ${managerComments ? managerComments.substring(0, 200) : 'No specific data provided.'}`,
+    developmentFeedback: 'Development areas will be identified with more comprehensive data input.',
+    goalsNextYear: '1. Continue professional development\n2. Strengthen collaboration skills\n3. Expand technical expertise',
+    overallAssessment: `Assessment based on ${count} of 4 possible data sources. Provide additional inputs for a more comprehensive review.`
   }
+}
+
+export async function GET() {
+  return new NextResponse(null, { status: 405 })
 }
