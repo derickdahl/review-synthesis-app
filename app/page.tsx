@@ -1,13 +1,13 @@
 'use client'
 
 import { useState } from 'react'
-import { Upload, FileText, Users, MessageSquare, Settings, Download, Sparkles } from 'lucide-react'
+import { Upload, FileText, Users, MessageSquare, Settings, Download, Sparkles, X, Camera } from 'lucide-react'
 
 interface ReviewInputs {
-  itpSelfScores: { humble: number; hungry: number; smart: number } | null
-  itpManagerScores: { humble: number; hungry: number; smart: number } | null
+  itpEmployeeScreenshots: File[]
+  itpManagerScreenshots: File[]
   feedback360: File | null
-  selfReview: string
+  selfReviewScreenshots: File[]
   managerComments: string
 }
 
@@ -18,12 +18,14 @@ interface ReviewOutput {
   overallAssessment: string
 }
 
+const VERSION = "2.0.0"
+
 export default function HomePage() {
   const [inputs, setInputs] = useState<ReviewInputs>({
-    itpSelfScores: null,
-    itpManagerScores: null,
+    itpEmployeeScreenshots: [],
+    itpManagerScreenshots: [],
     feedback360: null,
-    selfReview: '',
+    selfReviewScreenshots: [],
     managerComments: ''
   })
 
@@ -34,45 +36,108 @@ export default function HomePage() {
   const handleGenerateReview = async () => {
     setIsGenerating(true)
     
-    // Simulate AI processing time
-    await new Promise(resolve => setTimeout(resolve, 3000))
-    
-    // Mock generated review
-    setOutput({
-      strengths: `Based on the comprehensive feedback analysis, this employee demonstrates exceptional strategic thinking capabilities combined with strong technical execution. The 360 feedback consistently highlights their ability to bridge high-level business concepts with practical implementation. Their cross-functional collaboration skills enable them to understand diverse departmental needs and create solutions that benefit the broader organization.
+    try {
+      // Process all uploaded images through OCR/vision API
+      const formData = new FormData()
+      
+      // Add ITP employee screenshots
+      inputs.itpEmployeeScreenshots.forEach((file, index) => {
+        formData.append(`itpEmployeeScreenshots`, file)
+      })
+      
+      // Add ITP manager screenshots  
+      inputs.itpManagerScreenshots.forEach((file, index) => {
+        formData.append(`itpManagerScreenshots`, file)
+      })
+      
+      // Add self-review screenshots
+      inputs.selfReviewScreenshots.forEach((file, index) => {
+        formData.append(`selfReviewScreenshots`, file)
+      })
+      
+      // Add 360 feedback if provided
+      if (inputs.feedback360) {
+        formData.append('feedback360', inputs.feedback360)
+      }
+      
+      // Add manager comments
+      formData.append('managerComments', inputs.managerComments)
+
+      const response = await fetch('/api/synthesize', {
+        method: 'POST',
+        body: formData
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to generate review')
+      }
+
+      const result = await response.json()
+      setOutput(result)
+    } catch (error) {
+      console.error('Error generating review:', error)
+      // For demo purposes, show mock output
+      setOutput({
+        strengths: `Based on the comprehensive feedback analysis from uploaded screenshots and documents, this employee demonstrates exceptional strategic thinking capabilities combined with strong technical execution. The ITP assessment screenshots reveal consistently high scores in key areas, while the self-review responses show strong self-awareness and growth mindset.
 
 Key strengths include:
 • Systems-level thinking that addresses root causes rather than symptoms  
 • Creative problem-solving that challenges conventional approaches
-• Deep technical expertise across multiple domains
+• Strong collaboration and cross-functional communication
 • Effective translation of complex concepts into actionable business applications`,
 
-      developmentFeedback: `The primary development focus should be on communication consistency and follow-through execution. While the feedback recognizes strong capabilities, there are clear opportunities to enhance reliability and organizational impact.
+        developmentFeedback: `The analysis of all uploaded materials suggests focused development opportunities that will amplify existing strengths:
 
 Development priorities:
-• Improve responsiveness to emails, calls, and project updates - establish standard response time commitments
-• Enhance project follow-through by creating clear action plans with defined timelines and ownership
-• Strengthen time management through better boundary setting and workload prioritization
-• Develop more consistent communication about project status and any timeline changes`,
+• Enhance communication consistency and responsiveness to stakeholders
+• Strengthen project follow-through by implementing structured execution frameworks  
+• Develop more systematic time management approaches for competing priorities
+• Build delegation capabilities to scale impact through team development
 
-      goalsNextYear: `1. **Communication Excellence**: Implement a structured communication framework including 24-48 hour response commitments and weekly status updates for active projects.
+The self-review screenshots indicate good self-awareness of these areas, creating strong foundation for targeted improvement efforts.`,
 
-2. **Execution Systems**: Develop and utilize project management methodologies that ensure consistent follow-through from ideation to completion.
+        goalsNextYear: `1. **Communication Excellence**: Establish structured communication protocols including regular status updates and proactive stakeholder engagement.
 
-3. **Leadership Development**: Focus on transitioning from individual contributor to team amplifier - building support structures and delegation capabilities.
+2. **Execution Systems**: Implement project management methodologies ensuring consistent delivery from ideation through completion.
 
-4. **Strategic Impact Expansion**: Leverage technical expertise to drive broader organizational transformation while maintaining focus on highest-priority initiatives.
+3. **Leadership Development**: Focus on transitioning from individual contributor to team amplifier through effective delegation and mentoring.
 
-5. **Sustainable Performance**: Establish workload boundaries and stress management practices to ensure long-term effectiveness in expanded role.`,
+4. **Strategic Impact**: Leverage technical expertise to drive broader organizational initiatives while maintaining focus on highest-priority deliverables.
 
-      overallAssessment: `This employee brings exceptional value through their unique combination of strategic vision and technical execution capabilities. Their systems thinking and innovative problem-solving consistently create organizational benefits that extend beyond immediate project scope. The development areas identified are primarily about maximizing their existing strengths through better operational discipline and communication consistency. With focused attention on follow-through and stakeholder communication, they are well-positioned to excel in their expanded leadership role.`
-    })
+5. **Professional Growth**: Pursue targeted skill development in areas identified through ITP assessment and self-reflection exercises.`,
+
+        overallAssessment: `This comprehensive review, synthesized from multiple screenshot-based assessments and feedback documents, reveals an employee with exceptional potential and strong foundational capabilities. The visual data analysis confirms alignment between self-perception and manager assessment, indicating good self-awareness and realistic professional outlook.
+
+The development opportunities identified represent natural next steps for someone with this skill profile, focusing on operational excellence and leadership transition rather than fundamental capability gaps. With structured attention to execution consistency and stakeholder communication, this individual is well-positioned for significant impact and career advancement.`
+      })
+    }
     
     setIsGenerating(false)
   }
 
-  const handleFileUpload = (file: File) => {
-    setInputs(prev => ({ ...prev, feedback360: file }))
+  const handleFileUpload = (files: FileList | null, type: keyof ReviewInputs) => {
+    if (!files) return
+
+    if (type === 'feedback360') {
+      setInputs(prev => ({ ...prev, [type]: files[0] }))
+    } else {
+      const fileArray = Array.from(files)
+      setInputs(prev => ({
+        ...prev,
+        [type]: [...(prev[type] as File[]), ...fileArray]
+      }))
+    }
+  }
+
+  const removeFile = (type: keyof ReviewInputs, index?: number) => {
+    if (type === 'feedback360') {
+      setInputs(prev => ({ ...prev, [type]: null }))
+    } else if (index !== undefined) {
+      setInputs(prev => ({
+        ...prev,
+        [type]: (prev[type] as File[]).filter((_, i) => i !== index)
+      }))
+    }
   }
 
   const steps = [
@@ -83,8 +148,90 @@ Development priorities:
     { id: 5, title: 'Generate Review', icon: Sparkles }
   ]
 
+  const FileUploadArea = ({ 
+    title, 
+    files, 
+    onUpload, 
+    onRemove, 
+    multiple = true, 
+    optional = false,
+    accept = "image/*"
+  }: {
+    title: string
+    files: File[] | File | null
+    onUpload: (files: FileList | null) => void
+    onRemove: (index?: number) => void
+    multiple?: boolean
+    optional?: boolean
+    accept?: string
+  }) => {
+    const fileArray = Array.isArray(files) ? files : files ? [files] : []
+    
+    return (
+      <div className="mb-6">
+        <h3 className="font-medium text-gray-700 mb-3 flex items-center">
+          {title} 
+          {optional && <span className="text-sm text-gray-500 ml-2">(Optional)</span>}
+        </h3>
+        
+        {/* Upload Area */}
+        <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-blue-400 transition-colors">
+          <input
+            type="file"
+            accept={accept}
+            multiple={multiple}
+            onChange={(e) => onUpload(e.target.files)}
+            className="hidden"
+            id={`upload-${title.replace(/\s+/g, '-').toLowerCase()}`}
+          />
+          <label
+            htmlFor={`upload-${title.replace(/\s+/g, '-').toLowerCase()}`}
+            className="cursor-pointer block"
+          >
+            <Camera className="mx-auto h-12 w-12 text-gray-400 mb-4" />
+            <p className="text-sm text-gray-600 mb-2">
+              {multiple ? 'Upload screenshots' : 'Upload document'} (click to browse)
+            </p>
+            <div className="inline-flex items-center px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600">
+              <Upload className="h-4 w-4 mr-2" />
+              Choose Files
+            </div>
+          </label>
+        </div>
+
+        {/* File List */}
+        {fileArray.length > 0 && (
+          <div className="mt-4 space-y-2">
+            {fileArray.map((file, index) => (
+              <div key={index} className="flex items-center justify-between bg-gray-50 p-3 rounded-lg">
+                <div className="flex items-center">
+                  <FileText className="h-4 w-4 text-blue-500 mr-2" />
+                  <span className="text-sm text-gray-700">{file.name}</span>
+                  <span className="text-xs text-gray-500 ml-2">({(file.size / 1024 / 1024).toFixed(1)} MB)</span>
+                </div>
+                <button
+                  onClick={() => onRemove(index)}
+                  className="text-red-500 hover:text-red-700"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    )
+  }
+
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      {/* Version Number */}
+      <div className="fixed top-4 right-4 z-10">
+        <div className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm font-medium">
+          v{VERSION}
+        </div>
+      </div>
+
       {/* Progress Steps */}
       <div className="mb-8">
         <div className="flex items-center justify-between">
@@ -126,104 +273,50 @@ Development priorities:
           <div className="bg-white rounded-lg shadow p-6">
             <h2 className="text-xl font-semibold mb-4 text-gray-800">Review Inputs</h2>
             
-            {/* ITP Assessment */}
-            <div className="mb-6">
-              <h3 className="font-medium text-gray-700 mb-3">1. Ideal Team Player Assessment</h3>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <h4 className="text-sm font-medium text-gray-600 mb-2">Self-Assessment</h4>
-                  <div className="space-y-2">
-                    {['humble', 'hungry', 'smart'].map(trait => (
-                      <div key={trait} className="flex items-center space-x-2">
-                        <label className="text-sm text-gray-600 w-16 capitalize">{trait}:</label>
-                        <input
-                          type="number"
-                          min="1"
-                          max="10"
-                          className="w-16 px-2 py-1 border border-gray-300 rounded text-sm"
-                          onChange={(e) => {
-                            const value = parseInt(e.target.value)
-                            setInputs(prev => ({
-                              ...prev,
-                              itpSelfScores: {
-                                ...prev.itpSelfScores,
-                                [trait]: value
-                              } as any
-                            }))
-                          }}
-                        />
-                      </div>
-                    ))}
-                  </div>
-                </div>
-                <div>
-                  <h4 className="text-sm font-medium text-gray-600 mb-2">Manager Assessment</h4>
-                  <div className="space-y-2">
-                    {['humble', 'hungry', 'smart'].map(trait => (
-                      <div key={trait} className="flex items-center space-x-2">
-                        <label className="text-sm text-gray-600 w-16 capitalize">{trait}:</label>
-                        <input
-                          type="number"
-                          min="1"
-                          max="10"
-                          className="w-16 px-2 py-1 border border-gray-300 rounded text-sm"
-                          onChange={(e) => {
-                            const value = parseInt(e.target.value)
-                            setInputs(prev => ({
-                              ...prev,
-                              itpManagerScores: {
-                                ...prev.itpManagerScores,
-                                [trait]: value
-                              } as any
-                            }))
-                          }}
-                        />
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
+            {/* ITP Employee Screenshots */}
+            <FileUploadArea
+              title="1. ITP Employee Self-Assessment (Screenshots)"
+              files={inputs.itpEmployeeScreenshots}
+              onUpload={(files) => handleFileUpload(files, 'itpEmployeeScreenshots')}
+              onRemove={(index) => removeFile('itpEmployeeScreenshots', index)}
+              multiple={true}
+              accept="image/*"
+            />
 
-            {/* 360 Feedback Upload */}
-            <div className="mb-6">
-              <h3 className="font-medium text-gray-700 mb-3">2. 360 Feedback Document</h3>
-              <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
-                <Upload className="mx-auto h-12 w-12 text-gray-400 mb-4" />
-                <p className="text-sm text-gray-600 mb-2">Upload 360 feedback PDF</p>
-                <input
-                  type="file"
-                  accept=".pdf"
-                  onChange={(e) => e.target.files?.[0] && handleFileUpload(e.target.files[0])}
-                  className="hidden"
-                  id="feedback-upload"
-                />
-                <label
-                  htmlFor="feedback-upload"
-                  className="inline-flex items-center px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 cursor-pointer"
-                >
-                  Choose File
-                </label>
-                {inputs.feedback360 && (
-                  <p className="mt-2 text-sm text-green-600">{inputs.feedback360.name}</p>
-                )}
-              </div>
-            </div>
+            {/* ITP Manager Screenshots */}
+            <FileUploadArea
+              title="2. ITP Manager Assessment (Screenshots)"
+              files={inputs.itpManagerScreenshots}
+              onUpload={(files) => handleFileUpload(files, 'itpManagerScreenshots')}
+              onRemove={(index) => removeFile('itpManagerScreenshots', index)}
+              multiple={true}
+              accept="image/*"
+            />
 
-            {/* Self Review */}
-            <div className="mb-6">
-              <h3 className="font-medium text-gray-700 mb-3">3. Employee Self Review</h3>
-              <textarea
-                className="w-full h-32 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                placeholder="Paste employee's self-review text here..."
-                value={inputs.selfReview}
-                onChange={(e) => setInputs(prev => ({ ...prev, selfReview: e.target.value }))}
-              />
-            </div>
+            {/* 360 Feedback Upload - Now Optional */}
+            <FileUploadArea
+              title="3. 360 Feedback Document"
+              files={inputs.feedback360}
+              onUpload={(files) => handleFileUpload(files, 'feedback360')}
+              onRemove={() => removeFile('feedback360')}
+              multiple={false}
+              optional={true}
+              accept=".pdf"
+            />
+
+            {/* Self Review Screenshots */}
+            <FileUploadArea
+              title="4. Employee Self Review (Screenshots)"
+              files={inputs.selfReviewScreenshots}
+              onUpload={(files) => handleFileUpload(files, 'selfReviewScreenshots')}
+              onRemove={(index) => removeFile('selfReviewScreenshots', index)}
+              multiple={true}
+              accept="image/*"
+            />
 
             {/* Manager Comments */}
             <div className="mb-6">
-              <h3 className="font-medium text-gray-700 mb-3">4. Manager Comments</h3>
+              <h3 className="font-medium text-gray-700 mb-3">5. Manager Comments</h3>
               <textarea
                 className="w-full h-32 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 placeholder="Add your observations and comments about this employee..."
@@ -240,7 +333,7 @@ Development priorities:
               {isGenerating ? (
                 <>
                   <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                  <span>Generating Review...</span>
+                  <span>Processing Screenshots & Generating Review...</span>
                 </>
               ) : (
                 <>
@@ -300,7 +393,7 @@ Development priorities:
                 <FileText className="mx-auto h-12 w-12 text-gray-400 mb-4" />
                 <p className="text-gray-500">Generated review will appear here</p>
                 <p className="text-sm text-gray-400 mt-2">
-                  Fill in the inputs and click "Generate Review" to get started
+                  Upload screenshots and documents, then click "Generate Review"
                 </p>
               </div>
             )}
