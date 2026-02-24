@@ -15,11 +15,14 @@ interface SynthesisResponse {
 }
 
 export async function POST(request: Request) {
+  console.log('=== API CALL START ===')
   try {
     const contentType = request.headers.get('content-type')
+    console.log('Content-Type:', contentType)
     
     // Handle test requests
     if (contentType?.includes('application/json')) {
+      console.log('Test request - returning API status')
       return NextResponse.json({ 
         status: 'API is working', 
         timestamp: new Date().toISOString(),
@@ -27,13 +30,24 @@ export async function POST(request: Request) {
       })
     }
     
+    console.log('Processing form data request...')
     const formData = await request.formData()
+    console.log('Form data keys:', Array.from(formData.keys()))
     
     const managerComments = formData.get('managerComments') as string || ''
+    console.log('Manager comments:', managerComments ? `"${managerComments.substring(0, 50)}..."` : 'empty')
+    
     const itpEmployeeFiles = formData.getAll('itpEmployeeScreenshots')
     const itpManagerFiles = formData.getAll('itpManagerScreenshots')
     const feedback360File = formData.get('feedback360')
     const selfReviewFiles = formData.getAll('selfReviewScreenshots')
+    
+    console.log('Files:', {
+      itpEmployee: itpEmployeeFiles.length,
+      itpManager: itpManagerFiles.length,
+      feedback360: !!feedback360File,
+      selfReview: selfReviewFiles.length
+    })
 
     const dataUsed = {
       itpScores: itpEmployeeFiles.length > 0 || itpManagerFiles.length > 0,
@@ -85,6 +99,7 @@ Return ONLY a valid JSON object with exactly these 4 keys (no markdown, no code 
 Make the content specific to the data provided. Be professional and constructive.`
 
     const apiKey = process.env.ANTHROPIC_API_KEY
+    console.log('API key status:', apiKey ? `present (${apiKey.substring(0, 10)}...)` : 'missing')
     
     if (!apiKey) {
       console.error('ANTHROPIC_API_KEY is not set')
@@ -95,6 +110,8 @@ Make the content specific to the data provided. Be professional and constructive
         error: 'API key not configured'
       })
     }
+    
+    console.log('Making Claude API call...')
 
     const claudeResponse = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -150,10 +167,16 @@ Make the content specific to the data provided. Be professional and constructive
       extractedData: mockExtractedData
     }
 
+    console.log('=== SUCCESS - Returning response ===')
     return NextResponse.json(response)
 
   } catch (error) {
-    console.error('Synthesis error:', error)
+    console.error('=== SYNTHESIS ERROR ===')
+    console.error('Error type:', error?.constructor?.name)
+    console.error('Error message:', error instanceof Error ? error.message : String(error))
+    console.error('Error stack:', error instanceof Error ? error.stack : 'No stack trace')
+    console.error('========================')
+    
     return NextResponse.json(
       { error: 'Failed to synthesize review', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }
