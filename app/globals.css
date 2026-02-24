@@ -4,48 +4,61 @@
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    /* Sonance Brand Colors */
+    --sonance-black: #000000;
+    --sonance-white: #FFFFFF;
+    --sonance-dark-gray: #1A1A1A;
+    --sonance-medium-gray: #666666;
+    --sonance-light-gray: #F5F5F5;
+    --sonance-accent-blue: #0066CC;
+    --sonance-accent-blue-hover: #0052A3;
+    --sonance-success: #10B981;
+    --sonance-warning: #F59E0B;
+    --sonance-error: #EF4444;
+    
+    /* Updated CSS Custom Properties */
+    --background: 0 0% 97%;
+    --foreground: 0 0% 10%;
     --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --card-foreground: 0 0% 10%;
     --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-    --primary: 221.2 83.2% 53.3%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96%;
-    --secondary-foreground: 222.2 84% 4.9%;
-    --muted: 210 40% 96%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96%;
-    --accent-foreground: 222.2 84% 4.9%;
+    --popover-foreground: 0 0% 10%;
+    --primary: 213 100% 40%;
+    --primary-foreground: 0 0% 98%;
+    --secondary: 0 0% 96%;
+    --secondary-foreground: 0 0% 10%;
+    --muted: 0 0% 96%;
+    --muted-foreground: 0 0% 40%;
+    --accent: 213 100% 40%;
+    --accent-foreground: 0 0% 98%;
     --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 221.2 83.2% 53.3%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 0 0% 90%;
+    --input: 0 0% 90%;
+    --ring: 213 100% 40%;
     --radius: 0.5rem;
   }
 
   .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
-    --primary: 217.2 91.2% 59.8%;
-    --primary-foreground: 222.2 84% 4.9%;
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
+    --background: 0 0% 6%;
+    --foreground: 0 0% 98%;
+    --card: 0 0% 10%;
+    --card-foreground: 0 0% 98%;
+    --popover: 0 0% 10%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 213 100% 50%;
+    --primary-foreground: 0 0% 6%;
+    --secondary: 0 0% 15%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 0 0% 15%;
+    --muted-foreground: 0 0% 65%;
+    --accent: 213 100% 50%;
+    --accent-foreground: 0 0% 6%;
     --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 224.3 76.3% 94.1%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 0 0% 15%;
+    --input: 0 0% 15%;
+    --ring: 213 100% 50%;
   }
 }
 
@@ -55,5 +68,72 @@
   }
   body {
     @apply bg-background text-foreground;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   }
+}
+
+/* Sonance Brand Typography */
+.sonance-title {
+  font-family: 'Inter', sans-serif;
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  color: var(--sonance-black);
+}
+
+.sonance-subtitle {
+  font-family: 'Inter', sans-serif;
+  font-weight: 400;
+  color: var(--sonance-medium-gray);
+}
+
+/* Sonance Brand Buttons */
+.sonance-button-primary {
+  background-color: var(--sonance-accent-blue);
+  color: var(--sonance-white);
+  transition: all 0.2s ease-in-out;
+  font-weight: 500;
+}
+
+.sonance-button-primary:hover {
+  background-color: var(--sonance-accent-blue-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 102, 204, 0.3);
+}
+
+/* Sonance Brand Cards */
+.sonance-card {
+  background-color: var(--sonance-white);
+  border: 1px solid #E5E5E5;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  transition: all 0.2s ease-in-out;
+}
+
+.sonance-card:hover {
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  transform: translateY(-2px);
+}
+
+/* Sonance Brand Accent Elements */
+.sonance-accent-bar {
+  background: linear-gradient(90deg, var(--sonance-accent-blue) 0%, rgba(0, 102, 204, 0.7) 100%);
+  height: 4px;
+  border-radius: 2px;
+}
+
+/* Professional Upload Areas */
+.sonance-upload-area {
+  border: 2px dashed #D1D5DB;
+  transition: all 0.3s ease;
+  background: linear-gradient(135deg, #FAFAFA 0%, #F5F5F5 100%);
+}
+
+.sonance-upload-area:hover {
+  border-color: var(--sonance-accent-blue);
+  background: linear-gradient(135deg, #F8FAFF 0%, #EEF4FF 100%);
+}
+
+.sonance-upload-complete {
+  border-color: var(--sonance-success);
+  background: linear-gradient(135deg, #F0FDF4 0%, #DCFCE7 100%);
 }
