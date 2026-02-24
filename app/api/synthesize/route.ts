@@ -135,6 +135,9 @@ Base the content on the available data sources and be specific about what inform
     const result = await response.json()
     const synthesizedText = result.content[0]?.text || ''
     
+    console.log('DEBUG: Claude response length:', synthesizedText.length)
+    console.log('DEBUG: Claude response (first 500 chars):', synthesizedText.substring(0, 500))
+    
     return parseReviewSections(synthesizedText)
     
   } catch (error) {
@@ -153,6 +156,8 @@ function parseReviewSections(text: string) {
     overallAssessment: extractSection(text, ['overall', 'assessment', '4.'])
   }
 
+  console.log('DEBUG: Parsed sections:', Object.keys(sections).map(key => `${key}: ${(sections as any)[key].substring(0, 50)}...`))
+  
   return sections
 }
 
