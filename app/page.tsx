@@ -11,19 +11,6 @@ interface ReviewInputs {
   managerComments: string
 }
 
-interface ExtractedData {
-  itpEmployeeScores: { humble: number; hungry: number; smart: number } | null
-  itpManagerScores: { humble: number; hungry: number; smart: number } | null
-  feedback360Text: string | null
-  selfReviewText: string | null
-  extractionStatus: {
-    itpEmployee: 'pending' | 'processing' | 'complete' | 'error'
-    itpManager: 'pending' | 'processing' | 'complete' | 'error'
-    feedback360: 'pending' | 'processing' | 'complete' | 'error' | 'skipped'
-    selfReview: 'pending' | 'processing' | 'complete' | 'error'
-  }
-}
-
 interface ReviewOutput {
   strengths: string
   developmentFeedback: string
@@ -35,9 +22,15 @@ interface ReviewOutput {
     selfReview: boolean
     managerComments: boolean
   }
+  extractedData?: {
+    itpEmployeeScores: { humble: number; hungry: number; smart: number } | null
+    itpManagerScores: { humble: number; hungry: number; smart: number } | null
+    feedback360Summary: string | null
+    selfReviewSummary: string | null
+  }
 }
 
-const VERSION = "2.1.1"
+const VERSION = "2.1.2"
 
 export default function HomePage() {
   const [inputs, setInputs] = useState<ReviewInputs>({
@@ -48,23 +41,10 @@ export default function HomePage() {
     managerComments: ''
   })
 
-  const [extractedData, setExtractedData] = useState<ExtractedData>({
-    itpEmployeeScores: null,
-    itpManagerScores: null,
-    feedback360Text: null,
-    selfReviewText: null,
-    extractionStatus: {
-      itpEmployee: 'pending',
-      itpManager: 'pending',
-      feedback360: 'pending',
-      selfReview: 'pending'
-    }
-  })
-
   const [output, setOutput] = useState<ReviewOutput | null>(null)
   const [isGenerating, setIsGenerating] = useState(false)
   const [currentStep, setCurrentStep] = useState(1)
-  const [showExtractedData, setShowExtractedData] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   // Calculate completion status for each step
   const getStepStatus = (stepId: number) => {
@@ -98,26 +78,25 @@ export default function HomePage() {
   }
 
   const handleGenerateReview = async () => {
+    console.log('Generate review clicked')
     setIsGenerating(true)
+    setError(null)
     
     try {
-      // First, extract data from all uploads
-      await extractDataFromUploads()
-      
-      // Then synthesize the review
+      // Build form data
       const formData = new FormData()
       
       // Add all files and data
       inputs.itpEmployeeScreenshots.forEach((file) => {
-        formData.append(`itpEmployeeScreenshots`, file)
+        formData.append('itpEmployeeScreenshots', file)
       })
       
       inputs.itpManagerScreenshots.forEach((file) => {
-        formData.append(`itpManagerScreenshots`, file)
+        formData.append('itpManagerScreenshots', file)
       })
       
       inputs.selfReviewScreenshots.forEach((file) => {
-        formData.append(`selfReviewScreenshots`, file)
+        formData.append('selfReviewScreenshots', file)
       })
       
       if (inputs.feedback360) {
@@ -126,56 +105,30 @@ export default function HomePage() {
       
       formData.append('managerComments', inputs.managerComments)
 
+      console.log('Sending API request...')
       const response = await fetch('/api/synthesize', {
         method: 'POST',
         body: formData
       })
 
+      console.log('Response status:', response.status)
+
       if (!response.ok) {
-        throw new Error('Failed to generate review')
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData.details || `HTTP ${response.status}: Failed to generate review`)
       }
 
       const result = await response.json()
+      console.log('Review generated:', result)
       setOutput(result)
       updateCurrentStep()
       
     } catch (error) {
       console.error('Error generating review:', error)
-      // Show error state
+      setError(error instanceof Error ? error.message : 'Unknown error occurred')
     }
     
     setIsGenerating(false)
-  }
-
-  const extractDataFromUploads = async () => {
-    // Update status to show processing
-    setExtractedData(prev => ({
-      ...prev,
-      extractionStatus: {
-        itpEmployee: inputs.itpEmployeeScreenshots.length > 0 ? 'processing' : 'pending',
-        itpManager: inputs.itpManagerScreenshots.length > 0 ? 'processing' : 'pending',
-        feedback360: inputs.feedback360 ? 'processing' : 'skipped',
-        selfReview: inputs.selfReviewScreenshots.length > 0 ? 'processing' : 'pending'
-      }
-    }))
-
-    // Simulate extraction process (in real implementation, this would call the API)
-    await new Promise(resolve => setTimeout(resolve, 2000))
-
-    // Mock extracted data
-    setExtractedData(prev => ({
-      ...prev,
-      itpEmployeeScores: inputs.itpEmployeeScreenshots.length > 0 ? { humble: 8, hungry: 7, smart: 9 } : null,
-      itpManagerScores: inputs.itpManagerScreenshots.length > 0 ? { humble: 7, hungry: 8, smart: 8 } : null,
-      feedback360Text: inputs.feedback360 ? "Extracted 360 feedback content would appear here..." : null,
-      selfReviewText: inputs.selfReviewScreenshots.length > 0 ? "Extracted self-review text would appear here..." : null,
-      extractionStatus: {
-        itpEmployee: inputs.itpEmployeeScreenshots.length > 0 ? 'complete' : 'pending',
-        itpManager: inputs.itpManagerScreenshots.length > 0 ? 'complete' : 'pending',
-        feedback360: inputs.feedback360 ? 'complete' : 'skipped',
-        selfReview: inputs.selfReviewScreenshots.length > 0 ? 'complete' : 'pending'
-      }
-    }))
   }
 
   const handleFileUpload = (files: FileList | null, type: keyof ReviewInputs) => {
@@ -461,52 +414,25 @@ Generated by Review Synthesis App v${VERSION}`
               />
             </div>
 
-            {/* Show Extracted Data Button */}
-            {(extractedData.itpEmployeeScores || extractedData.itpManagerScores || extractedData.selfReviewText) && (
-              <button
-                onClick={() => setShowExtractedData(!showExtractedData)}
-                className="mb-4 flex items-center space-x-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200"
-              >
-                <Eye className="h-4 w-4" />
-                <span>{showExtractedData ? 'Hide' : 'Show'} Extracted Data</span>
-              </button>
-            )}
-
-            {/* Extracted Data Display */}
-            {showExtractedData && (
-              <div className="mb-6 p-4 bg-gray-50 rounded-lg">
-                <h4 className="font-medium text-gray-700 mb-3">Data Extracted from Uploads:</h4>
-                {extractedData.itpEmployeeScores && (
-                  <div className="mb-2">
-                    <strong>Employee ITP:</strong> Humble: {extractedData.itpEmployeeScores.humble}/10, 
-                    Hungry: {extractedData.itpEmployeeScores.hungry}/10, 
-                    Smart: {extractedData.itpEmployeeScores.smart}/10
-                  </div>
-                )}
-                {extractedData.itpManagerScores && (
-                  <div className="mb-2">
-                    <strong>Manager ITP:</strong> Humble: {extractedData.itpManagerScores.humble}/10, 
-                    Hungry: {extractedData.itpManagerScores.hungry}/10, 
-                    Smart: {extractedData.itpManagerScores.smart}/10
-                  </div>
-                )}
-                {extractedData.selfReviewText && (
-                  <div className="mb-2">
-                    <strong>Self Review Extract:</strong> {extractedData.selfReviewText.substring(0, 100)}...
-                  </div>
-                )}
+            {/* Error Display */}
+            {error && (
+              <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+                <p className="text-red-800 text-sm">
+                  <strong>Error:</strong> {error}
+                </p>
               </div>
             )}
 
+            {/* Generate Review Button */}
             <button
               onClick={handleGenerateReview}
-              disabled={isGenerating || getStepStatus(4) !== 'complete'}
+              disabled={isGenerating}
               className="w-full bg-blue-600 text-white py-3 px-4 rounded-lg font-semibold hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
             >
               {isGenerating ? (
                 <>
                   <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                  <span>Processing Screenshots & Generating Review...</span>
+                  <span>Generating Review...</span>
                 </>
               ) : (
                 <>
@@ -546,6 +472,27 @@ Generated by Review Synthesis App v${VERSION}`
                     <div>{output.dataUsed.managerComments ? '✓' : '✗'} Manager Comments</div>
                   </div>
                 </div>
+
+                {/* Extracted Data Debug Info */}
+                {output.extractedData && (
+                  <div className="bg-gray-50 p-3 rounded-lg">
+                    <h4 className="font-medium text-gray-800 mb-2">Extracted Data Summary:</h4>
+                    <div className="text-sm text-gray-600 space-y-1">
+                      {output.extractedData.itpEmployeeScores && (
+                        <div>Employee ITP: H:{output.extractedData.itpEmployeeScores.humble} Hu:{output.extractedData.itpEmployeeScores.hungry} S:{output.extractedData.itpEmployeeScores.smart}</div>
+                      )}
+                      {output.extractedData.itpManagerScores && (
+                        <div>Manager ITP: H:{output.extractedData.itpManagerScores.humble} Hu:{output.extractedData.itpManagerScores.hungry} S:{output.extractedData.itpManagerScores.smart}</div>
+                      )}
+                      {output.extractedData.feedback360Summary && (
+                        <div>360 Feedback: {output.extractedData.feedback360Summary}</div>
+                      )}
+                      {output.extractedData.selfReviewSummary && (
+                        <div>Self Review: {output.extractedData.selfReviewSummary}</div>
+                      )}
+                    </div>
+                  </div>
+                )}
 
                 <div>
                   <h3 className="font-medium text-gray-700 mb-2">Greatest Strengths</h3>
